@@ -11,15 +11,16 @@ app.post("/newgame", (req, res) => {
   mysql.NewGame(gameData, function (error, result) {
     if (error) {
       console.error("Error inserting game result.", error);
-      res.status(500).json({ error: "Erro ao inserir o resultado do jogo." });
+      res
+        .status(500)
+        .json({ error });
     } else {
       console.log("Game result inserted successfully.", result);
-      res.status(200).json({ message: "Resultado do jogo inserido com sucesso." });
+      res
+        .status(201)
+        .json({ message: "Resultado do jogo inserido com sucesso." });
     }
-    console.log(result);
-    console.log(req.body);
   });
-
 });
 
 /* b. "/player/{id}": Retorna os dados do jogador com o {id} */
@@ -46,15 +47,14 @@ app.post("/transfer", (req, res) => {
 });
 
 /* e. "/classification": Retorna a classificação atual */
-app.get("/classification", (req, res) => {
+app.get("/classification", (request, response) => {
   mysql.Classification(function (result) {
-    res.json(result);
+    response.json(result);
   });
 });
 
-// Manipulador de endpoint raiz
 app.get("/", (req, res) => {
-  res.send("Bem-vindo à API!"); // Substitua isso pela resposta desejada
+  res.json("Bem-vindo à API!");
 });
 
 app.listen(4000, function () {

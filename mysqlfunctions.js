@@ -14,8 +14,21 @@ con.connect(function (err) {
 
 function NewGame(gameData, callback) {
   const { IdClubeHome, IdClubeAway, Score } = gameData;
-  
+
+  // Uma equipa não pode jogar contra si própria
+  if (IdClubeHome === IdClubeAway) {
+    callback("As equipas não podem jogar contra si próprias.");
+    return;
+  }
+
+  // Ver se o score é um dígito que estamos à espera
+  if (![ 0, 1, 2 ].includes(Score)) {
+    callback("Resultado inválido, usa 0 para empate, 1 para vitória da equipa da casa, e 2 para vitória da equipa que joga fora.");
+    return;
+  }
+
   // Map the score values to the desired format
+  /*
   let mappedScore;
   if (Score === 0) {
     mappedScore = '0'; // Draw
@@ -27,15 +40,16 @@ function NewGame(gameData, callback) {
     callback("Invalid score value.", null);
     return;
   }
+  */
   
   const query = `INSERT INTO resultado (IdClubeHome, IdClubeAway, Score) VALUES (?, ?, ?)`;
-  con.query(query, [IdClubeHome, IdClubeAway, mappedScore], (error, result) => {
+  con.query(query, [IdClubeHome, IdClubeAway, Score], (error, result) => {
     if (error) {
       console.error("Erro ao inserir o resultado do jogo.", error);
       callback(error, null);
     } else {
       console.log("Resultado do jogo inserido com sucesso.");
-      console.log(Result);
+      console.log(result);
 
       callback(null, result);
     }
@@ -44,7 +58,15 @@ function NewGame(gameData, callback) {
 
 
 function PlayerDetails(id, callback) {
-  var sql = "SELECT * FROM jogador WHERE Id = ?";
+  var sql = `
+    SELECT
+      j.id,
+      j.nome AS Jogador,
+      c.nome AS Clube
+    FROM jogador j
+    LEFT JOIN clube c ON j.IdClube = c.Id
+    WHERE j.Id = ?
+  `;
   con.query(sql, id, function (err, result) {
     if (err) {
       console.log(err);
@@ -55,21 +77,55 @@ function PlayerDetails(id, callback) {
   });
 }
 
+/*
+{
+  Nome: 'Real Madrid',
+  jogadores: [
+    'Cristiano Ronaldo',
+    'Messi',
+    'Whatever'
+  ],
+  GamesPlayed: 0,
+  Points: 0,
+  Wins: 0,
+  Losses: 0,
+  Draws: 0
+}
+*/
+
 function ClubDetails(id, callback) {
-  var sql = "SELECT * FROM clube LEFT JOIN jogador ON clube.Id = jogador.Idclube WHERE clube.Id = ?";
-  con.query(sql, id, function (err, result) {
-    if (err) {
-      console.log(err);
+  Classification(function(result) {
+    const equipa = result.find(item => item.Id === Number(id));
+
+    if (!equipa) {
+      console.log('Essa equipa não existe.')
       callback(null);
-    } else {
-      callback(result);
+      return;
     }
+  
+    var sql = `
+      SELECT
+        jogador.Id,
+        jogador.Nome
+      FROM clube 
+      LEFT JOIN jogador ON clube.Id = jogador.Idclube 
+      WHERE clube.Id = ?
+      `;
+    con.query(sql, id, function (err, result) {
+      if (err) {
+        console.log(err);
+        callback(null);
+      } else {
+        equipa.Jogadores = result;
+        callback(equipa);
+      }
+    });
   });
 }
 
 function Transfer(transferData, callback) {
-  var playerId = transferData.playerId;
-  var targetClubId = transferData.targetClubId;
+  var playerId = Number(transferData.player);
+  var targetClubId = Number(transferData.club);
 
   var checkPlayerQuery = "SELECT * FROM jogador WHERE Id = ?";
   con.query(checkPlayerQuery, playerId, function (err, playerResult) {
@@ -81,6 +137,9 @@ function Transfer(transferData, callback) {
 
     if (playerResult.length === 0) {
       callback("Jogador não encontrado.");
+      return;
+    } else if(targetClubId === playerResult[0].IdClube){
+      callback("O jogador já está nesse clube.");
       return;
     }
 
@@ -97,7 +156,7 @@ function Transfer(transferData, callback) {
         return;
       }
 
-      var updatePlayerQuery = "UPDATE jogador SET clube = ? WHERE Id = ?";
+      var updatePlayerQuery = "UPDATE jogador SET IdClube = ? WHERE Id = ?";
       con.query(
         updatePlayerQuery,
         [targetClubId, playerId],
@@ -119,13 +178,11 @@ function Classification(callback) {
     SELECT
       clube.Id AS ClubId,
       clube.Nome AS ClubName,
+      resultado.IdClubeHome,
       resultado.Score
-    FROM
-      clube
-    LEFT JOIN
-      resultado
-    ON
-      resultado.IdClubeHome = clube.Id OR resultado.IdClubeAway = clube.Id
+    FROM clube
+    LEFT JOIN resultado
+      ON resultado.IdClubeHome = clube.Id OR resultado.IdClubeAway = clube.Id
   `;
 
   con.query(classificationQuery, function (err, results) {
@@ -143,8 +200,8 @@ function Classification(callback) {
 
       if (!classification[clubId]) {
         classification[clubId] = {
-          ClubId: clubId,
-          ClubName: row.ClubName,
+          Id: clubId,
+          Name: row.ClubName,
           GamesPlayed: 0,
           Points: 0,
           Wins: 0,
@@ -153,18 +210,32 @@ function Classification(callback) {
         };
       }
 
-      var clubData = classification[clubId];
-
-      clubData.GamesPlayed++;
-
-      if (score === 0) { // Compare as numbers instead of strings
-        clubData.Points += 1;
-        clubData.Draws++;
-      } else if (score === 1) { // Compare as numbers instead of strings
-        clubData.Points += 3;
-        clubData.Wins++;
-      } else { // Derrota
-        clubData.Losses++;
+      if (score !== null) {
+        var clubData = classification[clubId];
+        var isHome = clubId === row.IdClubeHome;
+  
+        clubData.GamesPlayed++;
+  
+        if (score === 0) { // Empate
+          clubData.Points += 1;
+          clubData.Draws++;
+        } else if (score === 1) { // Vitória da casa
+          if (isHome) {
+            clubData.Points += 3;
+            clubData.Wins++;
+          }
+          else {
+            clubData.Losses++;
+          }
+        } else { // Derrota da casa
+          if (isHome) {
+            clubData.Losses++;
+          }
+          else {
+            clubData.Points += 3;
+            clubData.Wins++;
+          }
+        }
       }
     });
 
