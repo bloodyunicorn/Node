@@ -1,6 +1,6 @@
-var mysql = require('mysql');
+const mysql = require('mysql');
 
-var con = mysql.createConnection({
+const con = mysql.createConnection({
   host: 'localhost',
   user: 'root',
   password: '',
@@ -9,56 +9,70 @@ var con = mysql.createConnection({
 
 con.connect(function (err) {
   if (err) throw err;
-  console.log('Conectado ao banco de dados MySQL!');
+  console.log('Conectado à base de dados!');
 });
 
-function NewGame(gameData, callback) {
-  const { IdClubeHome, IdClubeAway, Score } = gameData;
+function asyncQuery(query, valores) {
+  return new Promise(function (resolve, reject) {
+    con.query(query, valores, function (err, results) {
+      if (err) {
+        console.error(err);
+        reject(err);
+      }
 
-  // Uma equipa não pode jogar contra si própria
-  if (IdClubeHome === IdClubeAway) {
-    callback("As equipas não podem jogar contra si próprias.");
-    return;
-  }
-
-  // Ver se o score é um dígito que estamos à espera
-  if (![ 0, 1, 2 ].includes(Score)) {
-    callback("Resultado inválido, usa 0 para empate, 1 para vitória da equipa da casa, e 2 para vitória da equipa que joga fora.");
-    return;
-  }
-
-  // Map the score values to the desired format
-  /*
-  let mappedScore;
-  if (Score === 0) {
-    mappedScore = '0'; // Draw
-  } else if (Score === 1) {
-    mappedScore = '1'; // Home team victory
-  } else if (Score === 2) {
-    mappedScore = '2'; // Away team victory
-  } else {
-    callback("Invalid score value.", null);
-    return;
-  }
-  */
-  
-  const query = `INSERT INTO resultado (IdClubeHome, IdClubeAway, Score) VALUES (?, ?, ?)`;
-  con.query(query, [IdClubeHome, IdClubeAway, Score], (error, result) => {
-    if (error) {
-      console.error("Erro ao inserir o resultado do jogo.", error);
-      callback(error, null);
-    } else {
-      console.log("Resultado do jogo inserido com sucesso.");
-      console.log(result);
-
-      callback(null, result);
-    }
+      resolve(results);
+    });
   });
 }
 
+async function newGame(request, response) {
+  const { IdCasa, IdFora, Resultado } = request.body;
 
-function PlayerDetails(id, callback) {
-  var sql = `
+  if (!IdCasa || !IdFora) {
+    response.status(400).json({ error: "Faltam campos necessários." });
+    return;
+  }
+
+  if (IdCasa === IdFora) {
+    response.status(400).json({ error: "As equipas não podem jogar contra si próprias." });
+    return;
+  }
+
+  // Ver se o resultado é um dígito que estamos à espera
+  // 0 - empate
+  // 1 - vitória da equipa da casa
+  // 2 - vitória da equipa visitante
+  if (![ 0, 1, 2 ].includes(Resultado)) {
+    response.status(400).json({ error: "Resultado inválido, usa 0 para empate, 1 para vitória da equipa da casa, e 2 para vitória da equipa que joga fora."});
+    return;
+  }
+  
+  const query = `INSERT INTO resultado (IdCasa, IdFora, Resultado) VALUES (?, ?, ?)`;
+
+  let result;
+  try {
+    result = await asyncQuery(query, [IdCasa, IdFora, Resultado]);
+  }
+  catch (ex) {
+    response.status(500).json({ error: "Erro ao inserir o resultado." });
+    return;
+  }
+
+  console.log("Resultado inserido com successo.");
+  response.status(201).json({ message: "Resultado do jogo inserido com sucesso." });
+}
+
+
+async function playerDetails(req, res) {
+
+  const id = Number(req.params.id);
+
+  if (!id) {
+    response.status(400).json({ error: "Faltam campos necessários." });
+    return;
+  }
+
+  const sql = `
     SELECT
       j.id,
       j.nome AS Jogador,
@@ -67,197 +81,198 @@ function PlayerDetails(id, callback) {
     LEFT JOIN clube c ON j.IdClube = c.Id
     WHERE j.Id = ?
   `;
-  con.query(sql, id, function (err, result) {
-    if (err) {
-      console.log(err);
-      callback(null);
-    } else {
-      callback(result);
-    }
-  });
-}
 
-/*
-{
-  Nome: 'Real Madrid',
-  jogadores: [
-    'Cristiano Ronaldo',
-    'Messi',
-    'Whatever'
-  ],
-  GamesPlayed: 0,
-  Points: 0,
-  Wins: 0,
-  Losses: 0,
-  Draws: 0
-}
-*/
-
-function ClubDetails(id, callback) {
-  Classification(function(result) {
-    const equipa = result.find(item => item.Id === Number(id));
-
-    if (!equipa) {
-      console.log('Essa equipa não existe.')
-      callback(null);
-      return;
-    }
+  try {
+    result = await asyncQuery( sql, id);
+  } 
+  catch (ex) {
+    console.error(ex);
+    res.status(500).json({ error: "Erro ao retornar informação do Jogador" });
+    return;
   
-    var sql = `
-      SELECT
-        jogador.Id,
-        jogador.Nome
-      FROM clube 
-      LEFT JOIN jogador ON clube.Id = jogador.Idclube 
-      WHERE clube.Id = ?
-      `;
-    con.query(sql, id, function (err, result) {
-      if (err) {
-        console.log(err);
-        callback(null);
-      } else {
-        equipa.Jogadores = result;
-        callback(equipa);
-      }
-    });
-  });
+  }
+  
+  res.json(result);
+ 
 }
 
-function Transfer(transferData, callback) {
-  var playerId = Number(transferData.player);
-  var targetClubId = Number(transferData.club);
+async function classification(request, response) {
 
-  var checkPlayerQuery = "SELECT * FROM jogador WHERE Id = ?";
-  con.query(checkPlayerQuery, playerId, function (err, playerResult) {
-    if (err) {
-      console.log(err);
-      callback("Erro ocorreu durante a transferência do jogador.");
-      return;
-    }
-
-    if (playerResult.length === 0) {
-      callback("Jogador não encontrado.");
-      return;
-    } else if(targetClubId === playerResult[0].IdClube){
-      callback("O jogador já está nesse clube.");
-      return;
-    }
-
-    var checkClubQuery = "SELECT * FROM clube WHERE Id = ?";
-    con.query(checkClubQuery, targetClubId, function (err, clubResult) {
-      if (err) {
-        console.log(err);
-        callback("Erro ocorreu durante a transferência do jogador.");
-        return;
-      }
-
-      if (clubResult.length === 0) {
-        callback("Clube de destino não encontrado.");
-        return;
-      }
-
-      var updatePlayerQuery = "UPDATE jogador SET IdClube = ? WHERE Id = ?";
-      con.query(
-        updatePlayerQuery,
-        [targetClubId, playerId],
-        function (err, updateResult) {
-          if (err) {
-            console.log(err);
-            callback("Erro ocorreu durante a transferência do jogador.");
-          } else {
-            callback("Jogador transferido com sucesso.");
-          }
-        }
-      );
-    });
-  });
-}
-
-function Classification(callback) {
-  var classificationQuery = `
+  const classificationQuery = `
     SELECT
-      clube.Id AS ClubId,
-      clube.Nome AS ClubName,
-      resultado.IdClubeHome,
-      resultado.Score
-    FROM clube
-    LEFT JOIN resultado
-      ON resultado.IdClubeHome = clube.Id OR resultado.IdClubeAway = clube.Id
+      c.Id AS ClubId,
+      c.Nome AS ClubName,
+      r.IdCasa,
+      r.Resultado
+    FROM clube c
+    LEFT JOIN resultado r
+      ON r.IdCasa = c.Id OR r.IdFora = c.Id
   `;
 
-  con.query(classificationQuery, function (err, results) {
-    if (err) {
-      console.log(err);
-      callback("Erro ocorreu durante o cálculo da classificação.");
+  let results;
+  try {
+    results = await asyncQuery(classificationQuery);
+  }
+  catch (ex) {
+    response.status(500).json({ error: "Erro ocorreu durante o cálculo da classificação." });
+    return;
+  }
+
+  const classification = {};
+
+  results.forEach(function (row) {
+    const clubId = row.ClubId;
+    const score = row.Resultado;
+
+    if (!classification[clubId]) {
+      classification[clubId] = {
+        Id: clubId,
+        Name: row.ClubName,
+        GamesPlayed: 0,
+        Points: 0,
+        Wins: 0,
+        Losses: 0,
+        Draws: 0,
+      };
+    }
+
+    if (score !== null) {
+      const clubData = classification[clubId];
+      const isHome = clubId === row.IdCasa;
+
+      clubData.GamesPlayed++;
+
+      if (score === 0) { // Empate
+        clubData.Points += 1;
+        clubData.Draws++;
+      } else if (score === 1) { // Vitória da casa
+        if (isHome) {
+          clubData.Points += 3;
+          clubData.Wins++;
+        }
+        else {
+          clubData.Losses++;
+        }
+      } else { // Derrota da casa
+        if (isHome) {
+          clubData.Losses++;
+        }
+        else {
+          clubData.Points += 3;
+          clubData.Wins++;
+        }
+      }
+    }
+  });
+
+  // Converte o objeto de classificação em um array
+  const classificationArray = Object.values(classification);
+
+  // Ordena a classificação com base nos pontos
+  classificationArray.sort(function (a, b) {
+    return b.Points - a.Points;
+  });
+
+  if (request){
+    response.json(classificationArray);
+
+  } else{
+    return classificationArray;
+  }
+}
+
+async function clubDetails(request, response) {
+  const id = Number(request.params.id);
+
+  if (!id) {
+    response.status(400).json({ error: "Faltam campos necessários." });
+    return;
+  }
+
+  const result = await classification(null, response);
+ 
+  const equipa = result.find(item => item.Id === id);
+
+  if (!equipa) {
+    response.status(404).json({ error: "Essa equipa não existe." });
+    return;
+  }
+
+  const sql = `
+    SELECT
+      j.Id,
+      j.Nome
+    FROM clube 
+    LEFT JOIN jogador j ON clube.Id = j.Idclube 
+    WHERE clube.Id = ?
+    `;
+
+  let clubResult;
+   try{
+    clubResult = await asyncQuery(sql, id)
+   } catch(ex){
+    console.error(ex);
+    response.status(500).json({ error: "Erro ao retornar informação da equipa." });   
+  }
+
+    equipa.Jogadores = clubResult;
+    response.json(equipa);
+
+}
+
+async function transfer(req, res) {
+  const playerId = Number(req.body.player);
+  const targetClubId = Number(req.body.club);
+
+  if (!playerId || !targetClubId) {
+    res.status(400).json({ error: "Faltam campos necessários." });
+    return;
+  }
+
+  const checkPlayerQuery = "SELECT * FROM jogador WHERE Id = ?";
+  const checkClubQuery = "SELECT * FROM clube WHERE Id = ?";
+  const updatePlayerQuery = "UPDATE jogador SET IdClube = ? WHERE Id = ?";
+
+  try {
+    const playerResult = await asyncQuery(checkPlayerQuery, playerId);
+
+    if (playerResult.length === 0) {
+      res.status(404).json({error: "Jogador não encontrado."});
+      return;
+
+    } else if(targetClubId === playerResult[0].IdClube){
+      
+      res.status(400).json({error: "O jogador já está nesse clube."});
       return;
     }
 
-    var classification = {};
+    const clubResult = await asyncQuery(checkClubQuery, targetClubId);
 
-    results.forEach(function (row) {
-      var clubId = row.ClubId;
-      var score = row.Score;
+    if (clubResult.length === 0) {
+      res.status(404).json({error: "Clube de destino não encontrado."});
+      return;
+    }
 
-      if (!classification[clubId]) {
-        classification[clubId] = {
-          Id: clubId,
-          Name: row.ClubName,
-          GamesPlayed: 0,
-          Points: 0,
-          Wins: 0,
-          Losses: 0,
-          Draws: 0,
-        };
-      }
+    await asyncQuery(updatePlayerQuery, [targetClubId, playerId]);
 
-      if (score !== null) {
-        var clubData = classification[clubId];
-        var isHome = clubId === row.IdClubeHome;
-  
-        clubData.GamesPlayed++;
-  
-        if (score === 0) { // Empate
-          clubData.Points += 1;
-          clubData.Draws++;
-        } else if (score === 1) { // Vitória da casa
-          if (isHome) {
-            clubData.Points += 3;
-            clubData.Wins++;
-          }
-          else {
-            clubData.Losses++;
-          }
-        } else { // Derrota da casa
-          if (isHome) {
-            clubData.Losses++;
-          }
-          else {
-            clubData.Points += 3;
-            clubData.Wins++;
-          }
-        }
-      }
-    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Erro na transferência do jogador." });   
+    return;
 
-    // Converte o objeto de classificação em um array
-    var classificationArray = Object.values(classification);
+  }
 
-    // Ordena a classificação com base nos pontos
-    classificationArray.sort(function (a, b) {
-      return b.Points - a.Points;
-    });
-
-    callback(classificationArray);
-  });
+    res.json({message: "Jogador transferido com sucesso."});
+          
 }
 
 module.exports = {
-  con: con,
-  NewGame: NewGame,
-  PlayerDetails: PlayerDetails,
-  ClubDetails: ClubDetails,
-  Transfer: Transfer,
-  Classification: Classification,
+  con,
+  newGame,
+  playerDetails,
+  clubDetails,
+  transfer,
+  classification,
 };
 
 
