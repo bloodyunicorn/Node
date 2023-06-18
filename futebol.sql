@@ -2,8 +2,8 @@
 -- version 5.2.1
 -- https://www.phpmyadmin.net/
 --
--- Host: 127.0.0.1
--- Tempo de geração: 17-Jun-2023 às 14:52
+-- Host: localhost
+-- Tempo de geração: 18-Jun-2023 às 02:14
 -- Versão do servidor: 10.4.28-MariaDB
 -- versão do PHP: 8.2.4
 
@@ -37,11 +37,11 @@ CREATE TABLE `clube` (
 --
 
 INSERT INTO `clube` (`Id`, `Nome`) VALUES
-(1, 'Barcelona FC'),
-(2, 'Real Madrid CF'),
-(3, 'Manchester United'),
-(4, 'Bayern Munich'),
-(5, 'Juventus FC');
+(1, 'Porto'),
+(2, 'Benfica'),
+(3, 'Sporting'),
+(4, 'Braga'),
+(5, 'Ermesinde');
 
 -- --------------------------------------------------------
 
@@ -60,11 +60,11 @@ CREATE TABLE `jogador` (
 --
 
 INSERT INTO `jogador` (`Id`, `Nome`, `IdClube`) VALUES
-(1, 'Lionel Messi', 1),
+(1, 'Quim', 3),
 (2, 'Cristiano Ronaldo', 5),
-(3, 'Neymar Jr.', 1),
-(4, 'Sergio Ramos', 2),
-(5, 'Robert Lewandowski', 4);
+(3, 'Pepe', 1),
+(4, 'Marco Horácio', 2),
+(5, 'Fernando Rocha', 4);
 
 -- --------------------------------------------------------
 
@@ -74,10 +74,19 @@ INSERT INTO `jogador` (`Id`, `Nome`, `IdClube`) VALUES
 
 CREATE TABLE `resultado` (
   `Id` int(11) NOT NULL,
-  `IdClubeHome` int(11) NOT NULL,
-  `IdClubeAway` int(11) NOT NULL,
-  `Score` int(11) NOT NULL
+  `IdCasa` int(11) NOT NULL,
+  `IdFora` int(11) NOT NULL,
+  `Resultado` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Extraindo dados da tabela `resultado`
+--
+
+INSERT INTO `resultado` (`Id`, `IdCasa`, `IdFora`, `Resultado`) VALUES
+(5, 1, 2, 1),
+(7, 1, 2, 1),
+(8, 3, 4, 2);
 
 --
 -- Índices para tabelas despejadas
@@ -101,8 +110,8 @@ ALTER TABLE `jogador`
 --
 ALTER TABLE `resultado`
   ADD PRIMARY KEY (`Id`),
-  ADD KEY `IdClubeHome` (`IdClubeHome`),
-  ADD KEY `IdClubeAway` (`IdClubeAway`);
+  ADD KEY `IdClubeHome` (`IdCasa`),
+  ADD KEY `IdClubeAway` (`IdFora`);
 
 --
 -- AUTO_INCREMENT de tabelas despejadas
@@ -112,7 +121,7 @@ ALTER TABLE `resultado`
 -- AUTO_INCREMENT de tabela `resultado`
 --
 ALTER TABLE `resultado`
-  MODIFY `Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- Restrições para despejos de tabelas
@@ -128,8 +137,8 @@ ALTER TABLE `jogador`
 -- Limitadores para a tabela `resultado`
 --
 ALTER TABLE `resultado`
-  ADD CONSTRAINT `resultado_ibfk_1` FOREIGN KEY (`IdClubeHome`) REFERENCES `clube` (`Id`),
-  ADD CONSTRAINT `resultado_ibfk_2` FOREIGN KEY (`IdClubeAway`) REFERENCES `clube` (`Id`);
+  ADD CONSTRAINT `resultado_ibfk_1` FOREIGN KEY (`IdCasa`) REFERENCES `clube` (`Id`),
+  ADD CONSTRAINT `resultado_ibfk_2` FOREIGN KEY (`IdFora`) REFERENCES `clube` (`Id`);
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
